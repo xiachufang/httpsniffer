@@ -1,0 +1,15 @@
+[package]
+name = "httpsniffer"
+version = "0.1.0"
+authors = ["gfreezy <gfreezy@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+sniffglue = { path = "../sniffglue" }
+pcap = "0.7.0"
+threadpool = "1.7.1"
+structopt = "0.2.14"
+num_cpus = "1.10.0"
+env_logger = "0.6.0"
+failure = "0.1.5"
+get_if_addrs = "0.5.3"
