@@ -1,4 +1,5 @@
 #![warn(unused_extern_crates)]
+
 #[macro_use]
 extern crate nom;
 extern crate dhcp4r;
@@ -6,17 +7,21 @@ extern crate dns_parser;
 extern crate pcap;
 extern crate pktparse;
 extern crate tls_parser;
+#[cfg(all(target_os = "linux", feature = "sandbox"))]
 #[macro_use]
 extern crate log;
 extern crate serde_json;
+#[cfg(all(target_os = "linux", feature = "sandbox"))]
 extern crate toml;
 #[macro_use]
 extern crate serde_derive;
+#[cfg(all(target_os = "linux", feature = "sandbox"))]
 extern crate dirs;
 #[cfg(all(target_os = "linux", feature = "sandbox"))]
 extern crate nix;
 #[cfg(all(target_os = "linux", feature = "sandbox"))]
 extern crate syscallz;
+#[cfg(all(target_os = "linux", feature = "sandbox"))]
 extern crate users;
 
 pub mod centrifuge;
@@ -24,6 +29,7 @@ pub mod link;
 mod nom_http;
 #[cfg(all(target_os = "linux", feature = "sandbox"))]
 pub mod sandbox;
+#[allow(clippy::large_enum_variant)]
 pub mod structs;
 
 #[cfg(test)]
