@@ -144,24 +144,21 @@ fn main() {
         };
 
         loop {
-            match cap.next() {
-                Ok(packet) => {
-                    // let ts = packet.header.ts;
-                    // let len = packet.header.len;
+            if let Ok(packet) = cap.next() {
+                // let ts = packet.header.ts;
+                // let len = packet.header.len;
 
-                    let tx = tx.clone();
-                    let packet = packet.data.to_vec();
+                let tx = tx.clone();
+                let packet = packet.data.to_vec();
 
-                    let filter = filter.clone();
-                    let datalink = datalink.clone();
-                    pool.execute(move || {
-                        let packet = centrifuge::parse(&datalink, &packet);
-                        if filter.matches(&packet) {
-                            tx.send(packet).unwrap()
-                        }
-                    });
-                }
-                Err(..) => {}
+                let filter = filter.clone();
+                let datalink = datalink.clone();
+                pool.execute(move || {
+                    let packet = centrifuge::parse(&datalink, &packet);
+                    if filter.matches(&packet) {
+                        tx.send(packet).unwrap()
+                    }
+                });
             }
         }
     });
