@@ -13,15 +13,15 @@ impl DataLink {
             pcap::Linktype(1) => {
                 // LINKTYPE_ETHERNET
                 Ok(DataLink::Ethernet)
-            },
+            }
             pcap::Linktype(12) => {
                 // RAW IP (linux tun)
                 Ok(DataLink::Tun)
-            },
+            }
             pcap::Linktype(127) => {
                 // LINKTYPE_IEEE802_11_RADIOTAP
                 Ok(DataLink::RadioTap)
-            },
+            }
             x => Err(x),
         }
     }

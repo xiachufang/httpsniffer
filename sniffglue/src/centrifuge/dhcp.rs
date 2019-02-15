@@ -5,14 +5,14 @@ use dhcp4r;
 use structs::dhcp::*;
 use structs::{self, CentrifugeError};
 
-
-fn parse_dhcp_option(option: &dhcp4r::options::Option) -> Result<DhcpOption, ::std::string::FromUtf8Error> {
+fn parse_dhcp_option(
+    option: &dhcp4r::options::Option,
+) -> Result<DhcpOption, ::std::string::FromUtf8Error> {
     use dhcp4r::options::*;
     let value = match option.code {
-
-        REQUESTED_IP_ADDRESS |
-        ROUTER |
-        DOMAIN_NAME_SERVER => DhcpOption::IPv4(nbytes2ipv4(option.data).unwrap()),
+        REQUESTED_IP_ADDRESS | ROUTER | DOMAIN_NAME_SERVER => {
+            DhcpOption::IPv4(nbytes2ipv4(option.data).unwrap())
+        }
 
         HOST_NAME => DhcpOption::String(String::from_utf8(option.data.to_vec())?),
 
@@ -22,7 +22,10 @@ fn parse_dhcp_option(option: &dhcp4r::options::Option) -> Result<DhcpOption, ::s
     Ok(value)
 }
 
-fn wrap_packet(dhcp: &dhcp4r::packet::Packet, packet: structs::dhcp::Packet) -> structs::dhcp::DHCP {
+fn wrap_packet(
+    dhcp: &dhcp4r::packet::Packet,
+    packet: structs::dhcp::Packet,
+) -> structs::dhcp::DHCP {
     use structs::dhcp::DHCP::*;
 
     match dhcp.option(dhcp4r::options::DHCP_MESSAGE_TYPE) {
@@ -42,14 +45,12 @@ fn wrap_packet(dhcp: &dhcp4r::packet::Packet, packet: structs::dhcp::Packet) -> 
             } else {
                 UNKNOWN(packet)
             }
-        },
+        }
         _ => UNKNOWN(packet),
     }
 }
 
-
 pub fn extract(remaining: &[u8]) -> Result<structs::dhcp::DHCP, CentrifugeError> {
-
     // work around out-of-bounds access in dhcp4r
     // https://github.com/kpcyrd/sniffglue/issues/16
     if remaining.len() < 240 {

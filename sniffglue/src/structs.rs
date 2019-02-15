@@ -8,9 +8,9 @@ pub enum CentrifugeError {
 }
 
 pub mod prelude {
-    pub use structs::raw::Raw::*;
     pub use structs::ether::Ether::*;
     pub use structs::ipv4::IPv4::*;
+    pub use structs::raw::Raw::*;
 }
 
 /// Zero            - This packet is very interesting
@@ -20,11 +20,11 @@ pub mod prelude {
 /// Maximum         - We couldn't parse this
 #[derive(Debug)]
 pub enum NoiseLevel {
-    Zero          = 0,
-    One           = 1,
-    Two           = 2,
+    Zero = 0,
+    One = 1,
+    Two = 2,
     AlmostMaximum = 3,
-    Maximum       = 4,
+    Maximum = 4,
 }
 
 impl NoiseLevel {
@@ -34,9 +34,9 @@ impl NoiseLevel {
 }
 
 pub mod raw {
+    use pktparse;
     use structs::ether;
     use structs::NoiseLevel;
-    use pktparse;
 
     #[derive(Debug, PartialEq, Serialize)]
     pub enum Raw {
@@ -58,11 +58,11 @@ pub mod raw {
 }
 
 pub mod ether {
-    use structs::arp;
-    use structs::ipv4;
-    use structs::cjdns;
-    use structs::NoiseLevel;
     use pktparse;
+    use structs::arp;
+    use structs::cjdns;
+    use structs::ipv4;
+    use structs::NoiseLevel;
 
     #[derive(Debug, PartialEq, Serialize)]
     pub enum Ether {
@@ -105,10 +105,10 @@ pub mod cjdns {
 }
 
 pub mod ipv4 {
+    use pktparse;
     use structs::tcp;
     use structs::udp;
     use structs::NoiseLevel;
-    use pktparse;
 
     #[derive(Debug, PartialEq, Serialize)]
     pub enum IPv4 {
@@ -130,8 +130,8 @@ pub mod ipv4 {
 }
 
 pub mod tcp {
-    use structs::tls;
     use structs::http;
+    use structs::tls;
     use structs::NoiseLevel;
 
     #[derive(Debug, PartialEq, Serialize)]
@@ -156,10 +156,10 @@ pub mod tcp {
 }
 
 pub mod udp {
-    use structs::dns;
     use structs::dhcp;
-    use structs::ssdp;
+    use structs::dns;
     use structs::dropbox;
+    use structs::ssdp;
     use structs::NoiseLevel;
 
     #[derive(Debug, PartialEq, Serialize)]
@@ -196,17 +196,16 @@ pub mod tls {
 
     impl ClientHello {
         pub fn new(hostname: Option<String>) -> ClientHello {
-            ClientHello {
-                hostname,
-            }
+            ClientHello { hostname }
         }
     }
 }
 
 pub mod http {
+    use nom_http;
+    use std::collections::HashMap;
     use std::str::from_utf8;
     use std::string::FromUtf8Error;
-    use nom_http;
 
     #[derive(Debug, PartialEq, Serialize)]
     pub struct Request {
@@ -218,25 +217,27 @@ pub mod http {
         pub referer: Option<String>,
         pub auth: Option<String>,
         pub cookies: Option<String>,
-        pub pdid: Option<String>,
+        pub data: String,
+        pub extra_headers: HashMap<String, Option<String>>,
     }
 
     fn mkheader(x: Vec<&[u8]>) -> Option<String> {
-        String::from_utf8(x.into_iter()
-            .flat_map(|x| x.to_owned())
-            .collect(),
-        ).ok()
+        String::from_utf8(x.into_iter().flat_map(|x| x.to_owned()).collect()).ok()
     }
 
     impl Request {
-        pub fn from_nom(req: &nom_http::Request, headers: Vec<nom_http::Header>) -> Result<Request, FromUtf8Error> {
+        pub fn from_nom(
+            req: &nom_http::Request,
+            headers: Vec<nom_http::Header>,
+            remaining: &[u8],
+        ) -> Result<Request, FromUtf8Error> {
             let mut host = None;
             let mut agent = None;
             let mut referer = None;
             let mut auth = None;
             let mut cookies = None;
-            let mut pdid = None;
 
+            let mut extra_headers = HashMap::new();
             for header in headers {
                 if let Ok(name) = from_utf8(header.name) {
                     match name.to_lowercase().as_str() {
@@ -246,8 +247,9 @@ pub mod http {
                         "authorization" => auth = mkheader(header.value),
                         "cookie" => cookies = mkheader(header.value),
                         "cookie" => cookies = mkheader(header.value),
-                        "x-xcf-pdid" => pdid = mkheader(header.value),
-                        _ => (),
+                        key => {
+                            extra_headers.insert(key.to_string(), mkheader(header.value));
+                        }
                     }
                 }
             }
@@ -256,7 +258,8 @@ pub mod http {
                 method: String::from_utf8(req.method.to_vec())?,
                 uri: String::from_utf8(req.uri.to_vec())?,
                 version: String::from_utf8(req.version.to_vec())?,
-                pdid,
+                data: String::from_utf8_lossy(remaining).to_string(),
+                extra_headers,
                 host,
                 agent,
                 referer,
@@ -304,7 +307,12 @@ pub mod dhcp {
     }
 
     impl Packet {
-        pub fn new(ciaddr: Ipv4Addr, yiaddr: Ipv4Addr, siaddr: Ipv4Addr, chaddr: [u8; 6]) -> Packet {
+        pub fn new(
+            ciaddr: Ipv4Addr,
+            yiaddr: Ipv4Addr,
+            siaddr: Ipv4Addr,
+            chaddr: [u8; 6],
+        ) -> Packet {
             Packet {
                 ciaddr,
                 yiaddr,
@@ -321,8 +329,8 @@ pub mod dhcp {
 }
 
 pub mod dns {
-    use std::net::{Ipv4Addr, Ipv6Addr};
     use dns_parser;
+    use std::net::{Ipv4Addr, Ipv6Addr};
 
     // https://github.com/tailhook/dns-parser/pull/34
     #[derive(Debug, PartialEq, Serialize)]
@@ -393,9 +401,7 @@ pub mod dns {
 
     impl Request {
         pub fn new(questions: Vec<(QueryType, String)>) -> Request {
-            Request {
-                questions,
-            }
+            Request { questions }
         }
 
         pub fn wrap(self) -> DNS {
@@ -410,9 +416,7 @@ pub mod dns {
 
     impl Response {
         pub fn new(answers: Vec<(String, Record)>) -> Response {
-            Response {
-                answers,
-            }
+            Response { answers }
         }
 
         pub fn wrap(self) -> DNS {
@@ -449,7 +453,7 @@ pub mod dns {
                     }
 
                     Record::TXT(String::from_utf8_lossy(&x).to_string())
-                },
+                }
                 _ => Record::Unknown,
             }
         }

@@ -1,26 +1,25 @@
-use pktparse::{ethernet, ipv4};
-use pktparse::ipv4::IPv4Protocol;
 use pktparse::ethernet::EtherType;
+use pktparse::ipv4::IPv4Protocol;
+use pktparse::{ethernet, ipv4};
 
-use structs::prelude::*;
-use structs::CentrifugeError;
-use structs::raw;
+use link::DataLink;
 use structs::ether::{self, Ether};
 use structs::ipv4::IPv4;
-use link::DataLink;
+use structs::prelude::*;
+use structs::raw;
+use structs::CentrifugeError;
 
 pub mod arp;
+pub mod cjdns;
 pub mod tcp;
 pub mod udp;
-pub mod cjdns;
 
 pub mod dhcp;
 pub mod dns;
-pub mod ssdp;
 pub mod dropbox;
 pub mod http;
+pub mod ssdp;
 pub mod tls;
-
 
 #[inline]
 pub fn parse(link: &DataLink, data: &[u8]) -> raw::Raw {
@@ -28,12 +27,10 @@ pub fn parse(link: &DataLink, data: &[u8]) -> raw::Raw {
     match *link {
         DataLink::Ethernet => match parse_eth(data) {
             Ok(eth) => eth,
-            Err(_)  => Unknown(data.to_vec()),
+            Err(_) => Unknown(data.to_vec()),
         },
         DataLink::Tun => parse_tun(data),
-        DataLink::RadioTap => {
-            Unknown(data.to_vec())
-        },
+        DataLink::RadioTap => Unknown(data.to_vec()),
     }
 }
 
@@ -44,23 +41,21 @@ pub fn parse_eth(data: &[u8]) -> Result<raw::Raw, CentrifugeError> {
         let inner = match eth_frame.ethertype {
             EtherType::IPv4 => match parse_ipv4(remaining) {
                 Ok(ipv4) => ipv4,
-                Err(_)   => Unknown(remaining.to_vec()),
+                Err(_) => Unknown(remaining.to_vec()),
             },
             EtherType::IPv6 => {
                 // TODO
                 Unknown(remaining.to_vec())
-            },
+            }
             EtherType::ARP => match arp::extract(remaining) {
                 Ok(arp_pkt) => Arp(arp_pkt),
-                Err(_)      => Unknown(remaining.to_vec()),
+                Err(_) => Unknown(remaining.to_vec()),
             },
             EtherType::Other(0xfc00) => match cjdns::parse(remaining) {
                 Ok(cjdns_pkt) => Cjdns(cjdns_pkt),
-                Err(_)        => Unknown(remaining.to_vec()),
+                Err(_) => Unknown(remaining.to_vec()),
             },
-            _ => {
-                Unknown(remaining.to_vec())
-            },
+            _ => Unknown(remaining.to_vec()),
         };
         Ok(Ether(eth_frame, inner))
     } else {
@@ -70,13 +65,11 @@ pub fn parse_eth(data: &[u8]) -> Result<raw::Raw, CentrifugeError> {
 
 #[inline]
 pub fn parse_tun(data: &[u8]) -> raw::Raw {
-    raw::Raw::Tun(
-        if let Ok(ipv4) = parse_ipv4(data) {
-            ipv4
-        } else {
-            Ether::Unknown(data.to_vec())
-        }
-    )
+    raw::Raw::Tun(if let Ok(ipv4) = parse_ipv4(data) {
+        ipv4
+    } else {
+        Ether::Unknown(data.to_vec())
+    })
 }
 
 #[inline]
@@ -91,9 +84,7 @@ pub fn parse_ipv4(data: &[u8]) -> Result<ether::Ether, CentrifugeError> {
                 Ok((udp_hdr, udp)) => UDP(udp_hdr, udp),
                 Err(_) => IPv4::Unknown(remaining.to_vec()),
             },
-            _ => {
-                IPv4::Unknown(remaining.to_vec())
-            }
+            _ => IPv4::Unknown(remaining.to_vec()),
         };
         Ok(IPv4(ip_hdr, inner))
     } else {

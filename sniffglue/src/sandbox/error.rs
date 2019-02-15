@@ -1,7 +1,7 @@
-use sandbox::config;
 use nix;
-use syscallz;
+use sandbox::config;
 use std;
+use syscallz;
 
 #[derive(Debug)]
 pub enum Error {
@@ -32,7 +32,7 @@ impl From<nix::Error> for Error {
     }
 }
 
-impl From<std::io::Error> for Error  {
+impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Error {
         Error::Io(err)
     }

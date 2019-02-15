@@ -1,8 +1,8 @@
-use std::io::{self, Read};
+use dirs;
 use std::fs::File;
+use std::io::{self, Read};
 use std::path::Path;
 use toml;
-use dirs;
 
 #[derive(Debug, Default, Deserialize, PartialEq)]
 pub struct Config {
@@ -77,7 +77,8 @@ mod tests {
             user = "foo"
             chroot = "/var/empty"
             "#,
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(
             Config {

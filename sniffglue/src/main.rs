@@ -1,40 +1,40 @@
 #![warn(unused_extern_crates)]
-extern crate sniffglue;
+extern crate ansi_term;
+extern crate num_cpus;
 extern crate pcap;
 extern crate pktparse;
-extern crate ansi_term;
-extern crate threadpool;
-extern crate num_cpus;
 extern crate reduce;
-#[macro_use] extern crate structopt;
+extern crate sniffglue;
+extern crate threadpool;
+#[macro_use]
+extern crate structopt;
 extern crate atty;
 extern crate env_logger;
 extern crate serde_json;
 extern crate sha2;
 
-use pcap::Device;
 use pcap::Capture;
+use pcap::Device;
 
 use threadpool::ThreadPool;
 
-use std::thread;
 use std::sync::mpsc;
+use std::thread;
 
 mod cli;
 mod fmt;
 use cli::Args;
 use sniffglue::centrifuge;
 use sniffglue::link::DataLink;
+#[cfg(all(target_os = "linux", feature = "sandbox"))]
 use sniffglue::sandbox;
 use sniffglue::structs;
 
 use structopt::StructOpt;
 
-
 type Message = structs::raw::Raw;
 type Sender = mpsc::Sender<Message>;
 type Receiver = mpsc::Receiver<Message>;
-
 
 // XXX: workaround, remove if possible
 enum CapWrap {
@@ -63,11 +63,11 @@ impl From<Capture<pcap::Offline>> for CapWrap {
     }
 }
 
-
 fn main() {
     // this goes before the sandbox so logging is available
     env_logger::init();
 
+    #[cfg(all(target_os = "linux", feature = "sandbox"))]
     sandbox::activate_stage1().expect("init sandbox stage1");
 
     let args = Args::from_args();
@@ -91,35 +91,37 @@ fn main() {
     let config = fmt::Config::new(layout, args.verbose, colors);
 
     let cap: CapWrap = if !args.read {
-        match Capture::from_device(device.as_str()).unwrap()
-                .promisc(args.promisc)
-                .open() {
+        match Capture::from_device(device.as_str())
+            .unwrap()
+            .promisc(args.promisc)
+            .open()
+        {
             Ok(cap) => {
                 eprintln!("Listening on device: {:?}", device);
                 cap.into()
-            },
+            }
             Err(e) => {
                 eprintln!("Failed to open interface {:?}: {}", device, e);
                 return;
-            },
+            }
         }
     } else {
         match Capture::from_file(device.as_str()) {
             Ok(cap) => {
                 eprintln!("Reading from file: {:?}", device);
                 cap.into()
-            },
+            }
             Err(e) => {
                 eprintln!("Failed to open pcap file {:?}: {}", device, e);
                 return;
-            },
+            }
         }
     };
-
 
     let (tx, rx): (Sender, Receiver) = mpsc::channel();
     let filter = config.filter();
 
+    #[cfg(all(target_os = "linux", feature = "sandbox"))]
     sandbox::activate_stage2().expect("init sandbox stage2");
 
     let join = thread::spawn(move || {
@@ -131,29 +133,36 @@ fn main() {
             Ok(link) => link,
             Err(x) => {
                 // TODO: properly exit the program
-                eprintln!("Unknown link type: {:?}, {:?}, {}",
+                eprintln!(
+                    "Unknown link type: {:?}, {:?}, {}",
                     x.get_name().unwrap_or_else(|_| "???".into()),
                     x.get_description().unwrap_or_else(|_| "???".into()),
-                    x.0);
+                    x.0
+                );
                 return;
-            },
+            }
         };
 
-        while let Ok(packet) = cap.next() {
-            // let ts = packet.header.ts;
-            // let len = packet.header.len;
+        loop {
+            match cap.next() {
+                Ok(packet) => {
+                    // let ts = packet.header.ts;
+                    // let len = packet.header.len;
 
-            let tx = tx.clone();
-            let packet = packet.data.to_vec();
+                    let tx = tx.clone();
+                    let packet = packet.data.to_vec();
 
-            let filter = filter.clone();
-            let datalink = datalink.clone();
-            pool.execute(move || {
-                let packet = centrifuge::parse(&datalink, &packet);
-                if filter.matches(&packet) {
-                    tx.send(packet).unwrap()
+                    let filter = filter.clone();
+                    let datalink = datalink.clone();
+                    pool.execute(move || {
+                        let packet = centrifuge::parse(&datalink, &packet);
+                        if filter.matches(&packet) {
+                            tx.send(packet).unwrap()
+                        }
+                    });
                 }
-            });
+                Err(..) => {}
+            }
         }
     });
 

@@ -1,21 +1,20 @@
-use std::fs;
 use std::env;
+use std::fs;
 use std::os::unix::fs::MetadataExt;
 
-use users;
 use nix;
-use nix::unistd::{Uid, Gid, setuid, setgid, getgroups, setgroups};
+use nix::unistd::{getgroups, setgid, setgroups, setuid, Gid, Uid};
+use users;
 
 pub mod config;
 mod error;
-#[cfg(target_os="linux")]
+#[cfg(target_os = "linux")]
 pub mod seccomp;
 
 pub use self::error::Error;
 
-
 pub fn activate_stage1() -> Result<(), Error> {
-    #[cfg(target_os="linux")]
+    #[cfg(target_os = "linux")]
     seccomp::activate_stage1()?;
 
     info!("stage 1/2 is active");
@@ -58,11 +57,7 @@ pub fn id() -> String {
 
     format!(
         "uid={:?} euid={:?} gid={:?} egid={:?} groups={:?}",
-        uid,
-        euid,
-        gid,
-        egid,
-        groups
+        uid, euid, gid, egid, groups
     )
 }
 
@@ -76,7 +71,7 @@ fn apply_config(config: config::Config) -> Result<(), Error> {
                 None => return Err(Error::InvalidUser),
             };
             Some((user.uid(), user.primary_group_id()))
-        },
+        }
         _ => None,
     };
 
@@ -87,7 +82,7 @@ fn apply_config(config: config::Config) -> Result<(), Error> {
             info!("starting chroot: {:?}", path);
             chroot(path)?;
             info!("successfully chrooted");
-        },
+        }
         _ => (),
     }
 
@@ -100,10 +95,10 @@ fn apply_config(config: config::Config) -> Result<(), Error> {
                 setgid(Gid::from_raw(gid))?;
                 setuid(Uid::from_raw(uid))?;
                 info!("id: {}", id());
-            },
+            }
             None => {
                 warn!("executing as root!");
-            },
+            }
         }
     } else {
         info!("can't drop privileges, executing as {}", id());
@@ -118,14 +113,12 @@ pub fn activate_stage2() -> Result<(), Error> {
             warn!("couldn't find config");
             Ok(config::Config::default())
         },
-        |config_path| {
-            config::load(&config_path)
-        },
+        |config_path| config::load(&config_path),
     )?;
 
     apply_config(config)?;
 
-    #[cfg(target_os="linux")]
+    #[cfg(target_os = "linux")]
     seccomp::activate_stage2()?;
 
     info!("stage 2/2 is active");

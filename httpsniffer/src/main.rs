@@ -1,208 +1,216 @@
-use pcap::Device;
-use pcap::Capture;
 
-use threadpool::ThreadPool;
-
-use std::thread;
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
 use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
+
+use get_if_addrs::Interface;
+use num_cpus;
+use pcap::Capture;
+use pcap::Device;
+use pcap::Direction;
+use structopt::StructOpt;
+use structopt::clap::AppSettings;
+use threadpool::ThreadPool;
+use uuid::Uuid;
 
 use sniffglue::centrifuge;
 use sniffglue::link::DataLink;
-use sniffglue::sandbox;
-use sniffglue::structs;
-use num_cpus;
-use structopt::StructOpt;
+use sniffglue::structs::ether::Ether;
+use sniffglue::structs::http::Request;
+use sniffglue::structs::ipv4::IPv4;
+use sniffglue::structs::raw::Raw;
+use sniffglue::structs::tcp::TCP;
 
+mod metrics;
+use metrics::Registry;
 
-type Message = structs::raw::Raw;
+type Message = (Ipv4Addr, Request);
 type Sender = mpsc::Sender<Message>;
 type Receiver = mpsc::Receiver<Message>;
-
-use structopt::clap::AppSettings;
-use sniffglue::structs::raw::Raw;
-use sniffglue::structs::ether::Ether;
-use sniffglue::structs::ipv4::IPv4;
-use sniffglue::structs::tcp::TCP;
-use std::net::Ipv4Addr;
-use get_if_addrs::Interface;
-use std::net::IpAddr;
 
 #[derive(Debug, StructOpt)]
 #[structopt(raw(global_settings = "&[AppSettings::ColoredHelp]"))]
 pub struct Args {
+    #[structopt(long = "statsd_host", help = "192.168.1.1:2221")]
+    pub statsd_host: Option<String>,
+    #[structopt(long = "statsd_prefix")]
+    pub statsd_prefix: Option<String>,
+    #[structopt(short = "d", long = "duration", default_value = "10", help = "duration seconds")]
+    pub duration: u64,
     /// Set device to promisc
-    #[structopt(short="p", long="promisc")]
+    #[structopt(short = "p", long = "promisc")]
     pub promisc: bool,
-    /// Detailed output
-    #[structopt(short="d", long="detailed")]
-    pub detailed: bool,
-    /// Json output (unstable)
-    #[structopt(short="j", long="json")]
-    pub json: bool,
+    #[structopt(long = "port")]
+    pub port: Option<u16>,
     /// Show more packets (maximum: 4)
-    #[structopt(short="v", long="verbose",
-    parse(from_occurrences))]
+    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     pub verbose: u64,
-    /// Open device as pcap file
-    #[structopt(short="r", long="read")]
-    pub read: bool,
     /// Number of cores
-    #[structopt(short="n", long="cpus")]
+    #[structopt(short = "n", long = "cpus")]
     pub cpus: Option<usize>,
     /// Device for sniffing
     pub device: Option<String>,
 }
 
-// XXX: workaround, remove if possible
-enum CapWrap {
-    Active(Capture<pcap::Active>),
-    Offline(Capture<pcap::Offline>),
-}
-
-impl CapWrap {
-    fn activate(self) -> Capture<pcap::Activated> {
-        match self {
-            CapWrap::Active(cap) => cap.into(),
-            CapWrap::Offline(cap) => cap.into(),
-        }
-    }
-}
-
-impl From<Capture<pcap::Active>> for CapWrap {
-    fn from(cap: Capture<pcap::Active>) -> CapWrap {
-        CapWrap::Active(cap)
-    }
-}
-
-impl From<Capture<pcap::Offline>> for CapWrap {
-    fn from(cap: Capture<pcap::Offline>) -> CapWrap {
-        CapWrap::Offline(cap)
-    }
-}
-
-
 fn get_if_addr(name: &str) -> Option<Ipv4Addr> {
     let addrs: Vec<Interface> = get_if_addrs::get_if_addrs().expect("get if addrs");
-    addrs.iter().find(|iface| iface.name == name).and_then(|iface| {
-        match iface.ip() {
+    addrs
+        .iter()
+        .find(|iface| iface.name == name)
+        .and_then(|iface| match iface.ip() {
             IpAddr::V4(addr) => Some(addr),
             IpAddr::V6(_) => None,
-        }
-    })
+        })
+}
+
+fn parse_http_request(packet: Raw, port: u16, addr: Ipv4Addr) -> Option<Message> {
+    match packet {
+        Raw::Ether(_, ether) => match ether {
+            Ether::IPv4(ipv4_header, ipv4) => {
+                if ipv4_header.dest_addr != addr {
+                    return None;
+                }
+
+                match ipv4 {
+                    IPv4::TCP(tcp_header, tcp) => {
+                        if port != 0 && tcp_header.dest_port != port {
+                            return None;
+                        }
+                        match tcp {
+                            TCP::HTTP(request) => {
+                                return Some((ipv4_header.source_addr, request));
+                            }
+                            _ => return None,
+                        };
+                    }
+                    _ => {
+                        return None;
+                    }
+                }
+            }
+            _ => return None,
+        },
+        _ => return None,
+    }
 }
 
 fn main() {
-    // this goes before the sandbox so logging is available
     env_logger::init();
 
-    sandbox::activate_stage1().expect("init sandbox stage1");
-
-    let args = Args::from_args();
+    let args = dbg!(Args::from_args());
 
     let device = match args.device {
         Some(device) => device,
-        None => Device::lookup().unwrap().name,
+        None => Device::lookup().expect("lookup device").name,
     };
 
     let device_addr = get_if_addr(&device).expect("get device addr");
-
+    let port = args.port.unwrap_or(0);
     let cpus = args.cpus.unwrap_or_else(num_cpus::get);
-    let cap: CapWrap = if !args.read {
-        match Capture::from_device(device.as_str()).unwrap()
-            .promisc(args.promisc)
-            .open() {
-            Ok(cap) => {
-                eprintln!("Listening on device: {:?}", device);
-                cap.into()
-            },
-            Err(e) => {
-                eprintln!("Failed to open interface {:?}: {}", device, e);
-                return;
-            },
+    let duration = args.duration;
+    let statsd_prefix = args.statsd_prefix.unwrap_or("".to_string());
+
+    let mut cap = match Capture::from_device(device.as_str())
+        .expect("from device")
+        .promisc(args.promisc)
+        .open()
+    {
+        Ok(cap) => {
+            eprintln!("Listening on device: {:?}", device);
+            cap
         }
-    } else {
-        match Capture::from_file(device.as_str()) {
-            Ok(cap) => {
-                eprintln!("Reading from file: {:?}", device);
-                cap.into()
-            },
-            Err(e) => {
-                eprintln!("Failed to open pcap file {:?}: {}", device, e);
-                return;
-            },
+        Err(e) => {
+            eprintln!("Failed to open interface {:?}: {}", device, e);
+            return;
         }
     };
-
+    cap.direction(Direction::In).expect("set capture direction");
+    cap.filter(&format!("tcp dst port {}", port))
+        .expect("set capture filter");
 
     let (tx, rx): (Sender, Receiver) = mpsc::channel();
 
-    sandbox::activate_stage2().expect("init sandbox stage2");
-
     let join = thread::spawn(move || {
         let pool = ThreadPool::new(cpus);
-
-        let mut cap = cap.activate();
 
         let datalink = match DataLink::from_linktype(cap.get_datalink()) {
             Ok(link) => link,
             Err(x) => {
                 // TODO: properly exit the program
-                eprintln!("Unknown link type: {:?}, {:?}, {}",
-                          x.get_name().unwrap_or_else(|_| "???".into()),
-                          x.get_description().unwrap_or_else(|_| "???".into()),
-                          x.0);
+                eprintln!(
+                    "Unknown link type: {:?}, {:?}, {}",
+                    x.get_name().unwrap_or_else(|_| "???".into()),
+                    x.get_description().unwrap_or_else(|_| "???".into()),
+                    x.0
+                );
                 return;
-            },
+            }
         };
 
-        while let Ok(packet) = cap.next() {
-            // let ts = packet.header.ts;
-            // let len = packet.header.len;
+        loop {
+            match cap.next() {
+                Ok(packet) => {
+                    let tx = tx.clone();
+                    let packet = packet.data.to_vec();
 
-            let tx = tx.clone();
-            let packet = packet.data.to_vec();
-
-            let datalink = datalink.clone();
-            pool.execute(move || {
-                let packet = centrifuge::parse(&datalink, &packet);
-                tx.send(packet).unwrap();
-            });
+                    let datalink = datalink.clone();
+                    pool.execute(move || {
+                        let packet = centrifuge::parse(&datalink, &packet);
+                        if let Some(message) = parse_http_request(packet, port, device_addr) {
+                            tx.send(message).expect("send");
+                        }
+                    });
+                }
+                Err(pcap::Error::TimeoutExpired) => {}
+                Err(e) => {
+                    eprintln!("Error: {:?}", e);
+                    return;
+                }
+            }
         }
     });
 
-    for packet in rx.iter() {
-        match &packet {
-            Raw::Ether(_, ether) => {
-                match ether {
-                    Ether::IPv4(ipv4_header, ipv4) => {
+    let registry: Registry<String> =
+        metrics::Registry::new(args.statsd_host.expect("statsd client"), statsd_prefix);
+    let registry2 = registry.clone();
+    let t = thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(duration));
+        registry2.send();
+    });
 
-                        if ipv4_header.dest_addr != device_addr {
-                            continue;
-                        }
-
-                        match ipv4 {
-                            IPv4::TCP(tcp_header, tcp) => {
-                                if tcp_header.dest_port != 80 {
-                                    continue;
-                                }
-
-                                match tcp {
-                                    TCP::HTTP(request) => {
-                                        println!("{} {:?}", ipv4_header.source_addr, request);
-                                    },
-                                    _ => {},
-                                }
-                            },
-                            IPv4::UDP(_, _) => {},
-                            IPv4::Unknown(_) => {},
-                        }
-                    },
-                    _ => {},
-                }
-            },
-            _ => {}
+    for (_addr, request) in rx.iter() {
+        let real_ip = request.extra_headers.get("x-forwarded-for");
+        let pdid = request.extra_headers.get("x-xcf-pdid");
+        let host = if let Some(host) = request.host.as_ref() {
+            host.replace(".", "_")
+        } else {
+            continue;
         };
+
+        if let Some(Some(ip)) = real_ip {
+            let unique_ips = registry.get_cardinality(&format!("{}.ips_per_{}s", host, duration));
+            unique_ips.add(ip.to_owned());
+        }
+
+        let reqs = registry.get_counter(&format!("{}.reqs_per_{}s", host, duration));
+        reqs.add(1);
+        if args.verbose > 0 {
+            println!("{:?}", &request);
+        }
+
+        if let Some(Some(pdid)) = pdid {
+            let my_uuid = match Uuid::parse_str(&pdid.replace("-", "")) {
+                Ok(uuid) => uuid,
+                Err(_) => continue,
+            };
+            let unique_pdids =
+                registry.get_cardinality(&format!("{}.pdids_per_{}s", host, duration));
+            unique_pdids.add(my_uuid.to_string());
+        }
     }
 
-    join.join().unwrap();
+    t.join().expect("join timer");
+    join.join().expect("join");
 }

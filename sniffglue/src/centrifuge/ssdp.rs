@@ -1,7 +1,6 @@
 use structs::ssdp::SSDP;
 use structs::CentrifugeError;
 
-
 pub fn parse_ssdp(data: &str) -> Result<SSDP, CentrifugeError> {
     if data.starts_with("M-SEARCH * HTTP/1.1\r\n") {
         let extra = &data[21..];

@@ -1,9 +1,8 @@
-use structs::{cjdns, CentrifugeError};
 use nom::be_u16;
+use structs::{cjdns, CentrifugeError};
 
 const BEACON_PASSWORD_LEN: usize = 20;
 const BEACON_PUBKEY_LEN: usize = 32;
-
 
 named!(cjdns_eth_header<&[u8], cjdns::CjdnsEthPkt>, do_parse!(
     _version:       tag!(b"\x00") >>

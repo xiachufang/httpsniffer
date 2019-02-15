@@ -5,9 +5,8 @@ use pktparse::tcp::{self, TcpHeader};
 use centrifuge::http;
 use centrifuge::tls;
 
-use structs::CentrifugeError;
 use structs::tcp::TCP;
-
+use structs::CentrifugeError;
 
 pub fn parse(remaining: &[u8]) -> Result<(tcp::TcpHeader, TCP), CentrifugeError> {
     if let Ok((remaining, tcp_hdr)) = tcp::parse_tcp_header(remaining) {
@@ -37,11 +36,10 @@ pub fn extract(tcp_hdr: &TcpHeader, remaining: &[u8]) -> Result<TCP, CentrifugeE
         }
         */
         Err(CentrifugeError::UnknownProtocol)
-    } else if tcp_hdr.dest_port == 80 {
+    } else {
+        // we try to parse any other packet as http protocol
         let http = http::extract(remaining)?;
         Ok(TCP::HTTP(http))
-    } else {
-        Err(CentrifugeError::UnknownProtocol)
     }
 }
 
