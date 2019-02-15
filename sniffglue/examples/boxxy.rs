@@ -5,7 +5,7 @@ extern crate sniffglue;
 
 fn stage1(sh: &mut boxxy::Shell, _args: Vec<String>) -> Result<(), boxxy::Error> {
     shprintln!(sh, "[*] starting stage1");
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "sandbox"))]
     sniffglue::sandbox::activate_stage1().unwrap();
     shprintln!(sh, "[+] activated!");
     Ok(())
@@ -13,7 +13,7 @@ fn stage1(sh: &mut boxxy::Shell, _args: Vec<String>) -> Result<(), boxxy::Error>
 
 fn stage2(sh: &mut boxxy::Shell, _args: Vec<String>) -> Result<(), boxxy::Error> {
     shprintln!(sh, "[*] starting stage2");
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "sandbox"))]
     sniffglue::sandbox::activate_stage2().unwrap();
     shprintln!(sh, "[+] activated!");
     Ok(())
