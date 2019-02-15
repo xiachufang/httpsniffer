@@ -246,7 +246,6 @@ pub mod http {
                         "referer" => referer = mkheader(header.value),
                         "authorization" => auth = mkheader(header.value),
                         "cookie" => cookies = mkheader(header.value),
-                        "cookie" => cookies = mkheader(header.value),
                         key => {
                             extra_headers.insert(key.to_string(), mkheader(header.value));
                         }

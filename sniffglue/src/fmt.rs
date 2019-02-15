@@ -157,7 +157,7 @@ impl Format {
             let bytes1 = Sha512::digest(&cjdns.pubkey);
             let bytes2 = Sha512::digest(&bytes1);
 
-            let mut iter = bytes2.as_slice().into_iter();
+            let mut iter = bytes2.as_slice().iter();
 
             let mut ipv6 = String::new();
             for x in 0..8 {
@@ -514,7 +514,7 @@ fn display_macadr_buf(mac: [u8; 6]) -> String {
 
 #[inline]
 fn display_kv_list(list: &[(&str, Option<String>)]) -> String {
-    list.into_iter()
+    list.iter()
         .filter_map(|&(key, ref value)| value.as_ref().map(|value| format!("{}: {:?}", key, value)))
         .reduce(|a, b| a + ", " + &b)
         .map(|extra| format!(" ({})", extra))
@@ -523,7 +523,7 @@ fn display_kv_list(list: &[(&str, Option<String>)]) -> String {
 
 #[inline]
 fn display_dhcp_kv_list(list: &[(&str, Option<DhcpOption>)]) -> String {
-    list.into_iter()
+    list.iter()
         .filter_map(|&(key, ref value)| {
             value.as_ref().map(|value| {
                 let value = match *value {
