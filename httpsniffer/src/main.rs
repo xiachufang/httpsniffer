@@ -84,9 +84,7 @@ fn parse_http_request(packet: Raw, port: u16, addr: Ipv4Addr) -> Option<Message>
                             return None;
                         }
                         match tcp {
-                            TCP::HTTP(request) => {
-                                Some((ipv4_header.source_addr, request))
-                            }
+                            TCP::HTTP(request) => Some((ipv4_header.source_addr, request)),
                             _ => None,
                         }
                     }
