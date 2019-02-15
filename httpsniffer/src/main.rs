@@ -1,4 +1,3 @@
-
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::sync::mpsc;
@@ -10,8 +9,9 @@ use num_cpus;
 use pcap::Capture;
 use pcap::Device;
 use pcap::Direction;
-use structopt::StructOpt;
 use structopt::clap::AppSettings;
+use structopt::StructOpt;
+
 use threadpool::ThreadPool;
 use uuid::Uuid;
 
@@ -37,7 +37,12 @@ pub struct Args {
     pub statsd_host: Option<String>,
     #[structopt(long = "statsd_prefix")]
     pub statsd_prefix: Option<String>,
-    #[structopt(short = "d", long = "duration", default_value = "10", help = "duration seconds")]
+    #[structopt(
+        short = "d",
+        long = "duration",
+        default_value = "10",
+        help = "duration seconds"
+    )]
     pub duration: u64,
     /// Set device to promisc
     #[structopt(short = "p", long = "promisc")]
@@ -80,19 +85,17 @@ fn parse_http_request(packet: Raw, port: u16, addr: Ipv4Addr) -> Option<Message>
                         }
                         match tcp {
                             TCP::HTTP(request) => {
-                                return Some((ipv4_header.source_addr, request));
+                                Some((ipv4_header.source_addr, request))
                             }
-                            _ => return None,
-                        };
+                            _ => None,
+                        }
                     }
-                    _ => {
-                        return None;
-                    }
+                    _ => None,
                 }
             }
-            _ => return None,
+            _ => None,
         },
-        _ => return None,
+        _ => None,
     }
 }
 
@@ -110,7 +113,7 @@ fn main() {
     let port = args.port.unwrap_or(0);
     let cpus = args.cpus.unwrap_or_else(num_cpus::get);
     let duration = args.duration;
-    let statsd_prefix = args.statsd_prefix.unwrap_or("".to_string());
+    let statsd_prefix = args.statsd_prefix.unwrap_or_else(|| "".to_string());
 
     let mut cap = match Capture::from_device(device.as_str())
         .expect("from device")
