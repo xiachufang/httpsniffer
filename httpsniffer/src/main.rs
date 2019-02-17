@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::sync::mpsc;
@@ -14,6 +15,7 @@ use structopt::StructOpt;
 use threadpool::ThreadPool;
 use uuid::Uuid;
 
+use metrics::Registry;
 use sniffglue::centrifuge;
 use sniffglue::link::DataLink;
 use sniffglue::structs::ether::Ether;
@@ -23,7 +25,6 @@ use sniffglue::structs::raw::Raw;
 use sniffglue::structs::tcp::TCP;
 
 mod metrics;
-use metrics::Registry;
 
 type Message = (Ipv4Addr, Request);
 type Sender = mpsc::Sender<Message>;
@@ -172,8 +173,7 @@ fn main() {
         }
     });
 
-    let registry: Registry<String> =
-        metrics::Registry::new(args.statsd_host.expect("statsd client"), statsd_prefix);
+    let registry: Registry<String> = metrics::Registry::new(args.statsd_host, statsd_prefix);
     let registry2 = registry.clone();
     let t = thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(duration));
@@ -190,11 +190,19 @@ fn main() {
         };
 
         if let Some(Some(ip)) = real_ip {
-            let unique_ips = registry.get_cardinality(&format!("{}.ips_per_{}s", host, duration));
+            let unique_ips = registry.get_cardinality(&format!("ips_per_{}s", duration), {
+                let mut map = HashMap::new();
+                map.insert("host".to_string(), host.clone());
+                Some(map)
+            });
             unique_ips.add(ip.to_owned());
         }
 
-        let reqs = registry.get_counter(&format!("{}.reqs_per_{}s", host, duration));
+        let reqs = registry.get_counter(&format!("reqs_per_{}s", duration), {
+            let mut map = HashMap::new();
+            map.insert("host".to_string(), host.clone());
+            Some(map)
+        });
         reqs.add(1);
         if args.verbose > 0 {
             println!("{:?}", &request);
@@ -205,8 +213,11 @@ fn main() {
                 Ok(uuid) => uuid,
                 Err(_) => continue,
             };
-            let unique_pdids =
-                registry.get_cardinality(&format!("{}.pdids_per_{}s", host, duration));
+            let unique_pdids = registry.get_cardinality(&format!("pdids_per_{}s", duration), {
+                let mut map = HashMap::new();
+                map.insert("host".to_string(), host.clone());
+                Some(map)
+            });
             unique_pdids.add(my_uuid.to_string());
         }
     }

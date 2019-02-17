@@ -54,19 +54,17 @@ httpsniffer --port 80 --duration 10 --statsd_host 192.168.1.1:9999 --statsd_pref
 
 # Statsd metrics
 ```
-$prefix.$host.reqs_per_${duration}s|c
-$prefix.$host.ips_per_${duration}s|c
-$prefix.$host.pdids_per_${duration}s|c
+$prefix.reqs_per_${duration}s|c#$tag_key1:$tag_value1,$tag_key2:$tag_value2
+$prefix.ips_per_${duration}s|c#$tag_key1:$tag_value1,$tag_key2:$tag_value2
+$prefix.pdids_per_${duration}s|c#$tag_key1:$tag_value1,$tag_key2:$tag_value2
 ```
 
 ```
-xlb.01.deployer-x_xiachufang_com.reqs_per_10s:1|c
-xlb.01.api-hermes_xiachufang_com.reqs_per_10s:32|c
-xlb.01.jumpapp_xiachufang_com.ips_per_10s:21|c
-xlb.01.m_xiachufang_com.ips_per_10s:133|c
-xlb.01.lanfanapp_com.ips_per_10s:23|c
-xlb.01.api-hermes_xiachufang_com.pdids_per_10s:30|c
-xlb.01.cloudimgsrv_xiachufang_com.pdids_per_10s:2|c
+nginx.xlb-01.ips_per_10s:4698|c|#host:api_xiachufang_com
+nginx.xlb-01.pdids_per_10s:4112|c|#host:api_xiachufang_com
+nginx.xlb-01.reqs_per_10s:10062|c|#host:api_xiachufang_com
+nginx.xlb-01.reqs_per_10s:10122|c|#host:api_xiachufang_com
+nginx.xlb-01.ips_per_10s:4737|c|#host:api_xiachufang_com
 ```
 
 # Bors commands
