@@ -7,7 +7,8 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::RwLock;
 
-use statsd::Client;
+use cadence::Counted;
+use cadence::StatsdClient;
 
 pub struct Cardinality<T: Eq + Hash> {
     name: String,
@@ -84,14 +85,16 @@ enum Metric<T: Eq + Hash> {
 #[derive(Clone)]
 pub struct Registry<T: Eq + Hash> {
     metrics: Arc<RwLock<HashMap<String, Metric<T>>>>,
-    client: Arc<Client>,
+    client: Arc<StatsdClient>,
 }
 
 impl<T: Eq + Hash> Registry<T> {
     pub fn new(host: impl ToSocketAddrs, prefix: impl AsRef<str>) -> Self {
         Registry {
             metrics: Arc::new(RwLock::new(HashMap::new())),
-            client: Arc::new(Client::new(host, prefix.as_ref()).expect("new statsd client")),
+            client: Arc::new(
+                StatsdClient::from_udp_host(prefix.as_ref(), host).expect("statsd client"),
+            ),
         }
     }
 
@@ -133,14 +136,19 @@ impl<T: Eq + Hash> Registry<T> {
     }
 
     pub fn send(&self) {
-        let mut pipe = self.client.pipeline();
         for (name, metric) in self.metrics.read().expect("send").iter() {
             let size = match metric {
                 Metric::Cardinality(cardinality) => cardinality.flush(),
                 Metric::Counter(counter) => counter.flush(),
             };
-            pipe.count(name, size as f64);
+
+            let ret = self.client.count_with_tags(name, size as i64).try_send();
+            match ret {
+                Ok(..) => {}
+                Err(err) => {
+                    eprintln!("send error: {:?}", err);
+                }
+            };
         }
-        pipe.send(&self.client);
     }
 }

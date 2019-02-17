@@ -11,7 +11,6 @@ use pcap::Device;
 use pcap::Direction;
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
-
 use threadpool::ThreadPool;
 use uuid::Uuid;
 
