@@ -15,7 +15,6 @@ use structopt::StructOpt;
 use threadpool::ThreadPool;
 use uuid::Uuid;
 
-use metrics::Registry;
 use sniffglue::centrifuge;
 use sniffglue::link::DataLink;
 use sniffglue::structs::ether::Ether;
@@ -173,7 +172,7 @@ fn main() {
         }
     });
 
-    let registry: Registry<String> = metrics::Registry::new(args.statsd_host, statsd_prefix);
+    let registry = metrics::Registry::new(args.statsd_host, statsd_prefix);
     let registry2 = registry.clone();
     let t = thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(duration));

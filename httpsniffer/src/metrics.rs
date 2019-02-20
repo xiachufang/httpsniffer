@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::hash::Hash;
 use std::net::ToSocketAddrs;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -11,14 +10,16 @@ use cadence::Counted;
 use cadence::NopMetricSink;
 use cadence::StatsdClient;
 
-pub struct Cardinality<T: Eq + Hash> {
+pub type CardinalityItem = String;
+
+pub struct Cardinality {
     name: String,
     tags: Option<HashMap<String, String>>,
-    set: Arc<RwLock<HashSet<T>>>,
+    set: Arc<RwLock<HashSet<CardinalityItem>>>,
 }
 
-impl<T: Eq + Hash> Cardinality<T> {
-    pub fn new(name: impl Into<String>, tags: Option<HashMap<String, String>>) -> Cardinality<T> {
+impl Cardinality {
+    pub fn new(name: impl Into<String>, tags: Option<HashMap<String, String>>) -> Cardinality {
         Cardinality {
             name: name.into(),
             set: Arc::new(RwLock::new(HashSet::new())),
@@ -26,8 +27,8 @@ impl<T: Eq + Hash> Cardinality<T> {
         }
     }
 
-    pub fn add(&self, item: impl Into<T>) -> bool {
-        self.set.write().expect("lock write").insert(item.into())
+    pub fn add(&self, item: CardinalityItem) -> bool {
+        self.set.write().expect("lock write").insert(item)
     }
 
     #[allow(dead_code)]
@@ -43,7 +44,7 @@ impl<T: Eq + Hash> Cardinality<T> {
     }
 }
 
-impl<T: Eq + Hash> Clone for Cardinality<T> {
+impl Clone for Cardinality {
     fn clone(&self) -> Self {
         Cardinality {
             name: self.name.clone(),
@@ -83,18 +84,18 @@ impl Counter {
     }
 }
 
-enum Metric<T: Eq + Hash> {
-    Cardinality(Cardinality<T>),
+enum Metric {
+    Cardinality(Cardinality),
     Counter(Counter),
 }
 
 #[derive(Clone)]
-pub struct Registry<T: Eq + Hash> {
-    metrics: Arc<RwLock<HashMap<String, Metric<T>>>>,
+pub struct Registry {
+    metrics: Arc<RwLock<HashMap<String, Metric>>>,
     client: Arc<StatsdClient>,
 }
 
-impl<T: Eq + Hash> Registry<T> {
+impl Registry {
     pub fn new<S: ToSocketAddrs>(host: Option<S>, prefix: impl AsRef<str>) -> Self {
         let client = match host {
             Some(h) => StatsdClient::from_udp_host(prefix.as_ref(), h).expect("statsd client"),
@@ -110,7 +111,7 @@ impl<T: Eq + Hash> Registry<T> {
         &self,
         name: impl Into<String>,
         tags: Option<HashMap<String, String>>,
-    ) -> Cardinality<T> {
+    ) -> Cardinality {
         let name = name.into();
         let card = Cardinality::new(name.clone(), tags);
         self.metrics
@@ -138,7 +139,7 @@ impl<T: Eq + Hash> Registry<T> {
         &self,
         name: &str,
         tags: Option<HashMap<String, String>>,
-    ) -> Cardinality<T> {
+    ) -> Cardinality {
         if let Some(Metric::Cardinality(card)) =
             self.metrics.read().expect("get cardinality").get(name)
         {
